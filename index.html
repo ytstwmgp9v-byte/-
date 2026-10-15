@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f8fc">
+<title>手書き英単語テスト</title>
+<style>
+:root{--ink:#202638;--muted:#687086;--line:#e1e5ef;--accent:#4257c5;--bg:#f7f8fc;--good:#147d52;--bad:#b93838}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:780px;margin:auto;padding:18px 14px 40px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px}.brand{font-weight:800;font-size:21px;letter-spacing:-.4px}.pill{font-size:12px;background:#e9ecff;color:#3549ae;border-radius:99px;padding:6px 10px}
+.panel{background:white;border:1px solid var(--line);border-radius:20px;padding:18px;margin-top:14px;box-shadow:0 5px 20px #25315a08}
+h1{font-size:23px;margin:0 0 6px}h2{font-size:16px;margin:0 0 12px}.sub{color:var(--muted);font-size:13px;line-height:1.55}
+label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px}select,input[type=file],input[type=text]{width:100%;padding:12px;border:1px solid var(--line);border-radius:11px;background:#fff;font-size:16px;color:var(--ink)}
+button{border:0;border-radius:12px;padding:12px 15px;font-weight:750;font-size:15px;cursor:pointer;background:var(--accent);color:white;touch-action:manipulation}
+button.secondary{background:#edf0f7;color:#30384d}button.outline{background:white;color:var(--accent);border:1px solid #cbd2f4}button:disabled{opacity:.45}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.actions button{flex:1;min-width:100px}
+.prompt{font-size:30px;font-weight:800;text-align:center;line-height:1.25;margin:18px 0 4px;overflow-wrap:anywhere}.direction{text-align:center;color:var(--muted);font-size:13px}.stats{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:10px}
+canvas{display:block;width:100%;height:210px;border:2px dashed #cbd2e2;border-radius:14px;background:#fff;touch-action:none;cursor:crosshair}
+.result{margin-top:12px;border-radius:12px;padding:12px;background:#f1f3f9;line-height:1.5;font-size:14px}.good{color:var(--good);font-weight:800}.bad{color:var(--bad);font-weight:800}
+.hidden{display:none!important}.tiny{font-size:12px;color:var(--muted);line-height:1.55}.progress{height:6px;background:#eceef5;border-radius:9px;overflow:hidden;margin:10px 0}.progress>div{height:100%;background:var(--accent);width:0;transition:width .2s}
+.wordlist{font-size:13px;line-height:1.8;max-height:170px;overflow:auto}.wordlist span{display:inline-block;background:#f0f2f8;padding:3px 8px;border-radius:7px;margin:3px}
+footer{text-align:center;font-size:12px;color:var(--muted);padding:20px 8px}
+@media(min-width:600px){main{padding-top:28px}.panel{padding:22px}.prompt{font-size:36px}canvas{height:240px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div class="brand">✍️ 手書き英単語テスト</div><span class="pill">iPad対応</span></header>
+<section class="panel" id="setup">
+<h1>今日の単語トレーニング</h1><p class="sub">画面にペンで書いて回答。OCRで文字を読み取り、自動採点を試みます。認識が難しい場合は、候補を直して判定できます。</p>
+<div class="grid">
+<div><label for="mode">出題方向</label><select id="mode"><option value="ja-en">日本語 → 英語</option><option value="en-ja">英語 → 日本語</option><option value="mix">両方ランダム</option></select></div>
+<div><label for="num">問題数</label><select id="num"><option>10</option><option>20</option><option>30</option><option>50</option></select></div>
+</div>
+<label for="source">単語データ</label><select id="source"><option value="sample">サンプル単語（約20語）</option><option value="custom">自分のCSVを読み込む</option></select>
+<div id="uploadBox" class="hidden"><label for="csvFile">単語CSV（UTF-8）</label><input id="csvFile" type="file" accept=".csv,text/csv"><p class="tiny">形式：英単語,日本語訳 の2列。1行目は「english,japanese」などの見出しでもOK。自分で用意した単語リストを読み込んでください。</p></div>
+<div class="actions"><button id="start">テスト開始</button><button class="secondary" id="showWords">収録サンプルを見る</button></div>
+<div id="wordPreview" class="wordlist hidden"></div>
+</section>
+
+<section class="panel hidden" id="quiz">
+<div class="stats"><span id="count">1 / 10</span><span>経過時間 <b id="timer">00:00</b></span><span>正解 <b id="score">0</b></span></div>
+<div class="progress"><div id="bar"></div></div>
+<div class="direction" id="direction">日本語を英語にしよう</div><div class="prompt" id="prompt">—</div>
+<p class="sub" style="text-align:center">下の欄にペンで書いてください</p>
+<canvas id="pad" aria-label="手書き解答欄"></canvas>
+<div class="actions"><button class="secondary" id="clear">消す</button><button class="outline" id="recognize">文字を認識</button><button id="submit">採点する</button></div>
+<div id="ocrStatus" class="tiny" style="margin-top:8px">OCRは初回に英語・日本語データを読み込むため、通信が必要です。</div>
+<div id="answerArea" class="hidden">
+<label for="recognized">認識した文字（必要なら修正）</label><input id="recognized" type="text" autocomplete="off" placeholder="認識結果がここに表示されます">
+<div id="feedback" class="result"></div>
+<div class="actions"><button id="next">次の問題</button><button class="secondary" id="reveal">答えを表示</button></div>
+</div>
+</section>
+<section class="panel hidden" id="finish"><h1>テスト終了！</h1><div class="prompt" id="finalScore">0 / 0</div><p class="sub" id="finalTime" style="text-align:center"></p><div id="review"></div><div class="actions"><button id="again">もう一度</button><button class="secondary" id="back">設定に戻る</button></div></section>
+<footer>手書き認識には誤認識があります。採点前に認識結果を確認してください。単語リストはCSVから追加できます。</footer>
+</main>
+<script>
+const sample = [
+["abandon","捨てる、放棄する"],["ability","能力"],["abroad","海外へ"],["accept","受け入れる"],["achieve","達成する"],["acquire","習得する、獲得する"],["adapt","適応する"],["admit","認める"],["affect","影響を与える"],["afford","余裕がある"],["approach","近づく、取り組み方"],["assume","思い込む、仮定する"],["benefit","利益、利益を得る"],["challenge","挑戦、異議を唱える"],["claim","主張する"],["contribute","貢献する"],["demand","要求する、需要"],["establish","設立する、確立する"],["evidence","証拠"],["occur","起こる"]
+];
+let words=sample.map(x=>({en:x[0],ja:x[1]})), deck=[], idx=0, score=0, started=0, tick=null, finished=[], currentMode="", worker=null, lastOcr="";
+const $=id=>document.getElementById(id);
+const setup=$("setup"), quiz=$("quiz"), finish=$("finish"), pad=$("pad"), ctx=pad.getContext("2d");
+$("source").addEventListener("change",()=> $("uploadBox").classList.toggle("hidden",$("source").value!=="custom"));
+$("showWords").onclick=()=>{const box=$("wordPreview");box.classList.toggle("hidden");box.innerHTML=sample.map(w=>`<span>${w.en} — ${w.ja}</span>`).join("")};
+$("csvFile").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;const txt=await f.text();const rows=txt.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim()).map(line=>line.split(",").map(v=>v.trim().replace(/^"|"$/g,"")));const parsed=rows.filter(r=>r.length>=2).map(r=>({en:r[0],ja:r.slice(1).join(",")})).filter(w=>w.en&&w.ja&&!/^(english|英単語|単語)$/i.test(w.en));if(parsed.length){words=parsed;alert(`${words.length}語を読み込みました`)}else alert("CSVを読み込めませんでした。英単語,日本語訳 の形式を確認してください。")});
+function shuffle(a){return a.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(x=>x[1])}
+function start(){if($("source").value==="custom"&&!$("csvFile").files.length){alert("先にCSVファイルを選んでください");return}if($("source").value==="sample")words=sample.map(x=>({en:x[0],ja:x[1]}));deck=shuffle(words).slice(0,Math.min(+ $("num").value,words.length)).map(w=>({...w,mode:$("mode").value==="mix"?(Math.random()<.5?"ja-en":"en-ja"):$("mode").value}));idx=0;score=0;finished=[];started=Date.now();clearInterval(tick);tick=setInterval(updateTimer,1000);setup.classList.add("hidden");finish.classList.add("hidden");quiz.classList.remove("hidden");showQuestion()}
+$("start").onclick=start;
+function updateTimer(){let s=Math.floor((Date.now()-started)/1000);$("timer").textContent=String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")}
+function resizeCanvas(){const rect=pad.getBoundingClientRect(),dpr=window.devicePixelRatio||1;const old=document.createElement("canvas");old.width=pad.width;old.height=pad.height;old.getContext("2d").drawImage(pad,0,0);pad.width=Math.round(rect.width*dpr);pad.height=Math.round(rect.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineWidth=3;ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="#1c2335";if(old.width&&old.height)ctx.drawImage(old,0,0,old.width,old.height,0,0,rect.width,rect.height)}
+function clearPad(){const r=pad.getBoundingClientRect();ctx.clearRect(0,0,r.width,r.height);lastOcr="";$("recognized").value="";$("ocrStatus").textContent="書いた文字を認識できます。"}
+function showQuestion(){const w=deck[idx];currentMode=w.mode;$("count").textContent=`${idx+1} / ${deck.length}`;$("score").textContent=score;$("bar").style.width=(idx/deck.length*100)+"%";$("direction").textContent=currentMode==="ja-en"?"日本語を見て、英単語を書こう":"英単語を見て、日本語の意味を書こう";$("prompt").textContent=currentMode==="ja-en"?w.ja:w.en;$("answerArea").classList.add("hidden");$("ocrStatus").textContent="ペンで書いてください。文字認識には通信が必要です。";clearPad();requestAnimationFrame(resizeCanvas)}
+let drawing=false, prev=null;
+function point(e){const r=pad.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+pad.addEventListener("pointerdown",e=>{e.preventDefault();drawing=true;pad.setPointerCapture(e.pointerId);prev=point(e);ctx.beginPath();ctx.moveTo(prev.x,prev.y)});
+pad.addEventListener("pointermove",e=>{if(!drawing)return;e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke();prev=p});
+function stopDraw(){drawing=false;prev=null}pad.addEventListener("pointerup",stopDraw);pad.addEventListener("pointercancel",stopDraw);pad.addEventListener("pointerleave",()=>{});
+$("clear").onclick=clearPad;
+async function loadTesseract(){if(window.Tesseract)return true;return await new Promise(resolve=>{const sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";sc.onload=()=>resolve(!!window.Tesseract);sc.onerror=()=>resolve(false);document.head.appendChild(sc)})}
+async function recognize(){if(!window.Tesseract){$("ocrStatus").textContent="手書き認識ライブラリを読み込み中…";const loaded=await loadTesseract();if(!loaded){$("ocrStatus").textContent="文字認識ライブラリを読み込めません。ネット接続を確認してください。認識結果欄に手入力して採点できます。";$("answerArea").classList.remove("hidden");return}}const w=deck[idx];const lang=currentMode==="ja-en"?"eng":"jpn";$("ocrStatus").textContent="文字を認識中…初回はデータ読み込みに時間がかかります。";$("recognize").disabled=true;try{if(worker){await worker.terminate();worker=null}worker=await Tesseract.createWorker(lang,1,{logger:m=>{if(m.status==="recognizing text")$("ocrStatus").textContent=`文字を認識中… ${Math.round((m.progress||0)*100)}%`}});const result=await worker.recognize(pad);lastOcr=(result.data.text||"").replace(/\n/g," ").trim();$("recognized").value=lastOcr;$("ocrStatus").textContent=lastOcr?`認識結果：${lastOcr}`:"文字を認識できませんでした。もう一度書くか、下の欄に入力してください。";}catch(e){$("ocrStatus").textContent="認識に失敗しました。ネット接続を確認するか、文字を入力してください。"}finally{$("recognize").disabled=false}}
+$("recognize").onclick=recognize;
+function norm(s){return (s||"").toLowerCase().normalize("NFKC").replace(/[.,!?;:'"’‘“”()[\]{}\-_/\\\s]/g,"").trim()}
+function grade(){const w=deck[idx],given=$("recognized").value.trim(),expected=currentMode==="ja-en"?w.en:w.ja;const ok=norm(given)===norm(expected);if(ok)score++;finished.push({w,mode:currentMode,given,expected,ok});$("score").textContent=score;$("feedback").innerHTML=`<div class="${ok?"good":"bad"}">${ok?"正解！":"不正解"}</div><div>あなたの回答：${escapeHtml(given||"（空欄）")}</div><div>正解：<b>${escapeHtml(expected)}</b></div>${!ok&&currentMode==="en-ja"?'<div class="tiny">日本語訳は表現の違いがあるため、必要なら正解を確認してください。</div>':""}`;$("answerArea").classList.remove("hidden");$("submit").disabled=true}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+$("submit").onclick=async()=>{if(!$("recognized").value.trim()&&padHasInk()){await recognize()}grade()};
+function padHasInk(){const d=ctx.getImageData(0,0,pad.width,pad.height).data;for(let i=3;i<d.length;i+=4)if(d[i]>0)return true;return false}
+$("recognized").addEventListener("input",()=>{$("submit").disabled=false});
+$("reveal").onclick=()=>{const w=deck[idx];$("recognized").value=currentMode==="ja-en"?w.en:w.ja;$("feedback").innerHTML=`正解：<b>${escapeHtml($("recognized").value)}</b>`;$("answerArea").classList.remove("hidden");$("submit").disabled=true};
+$("next").onclick=()=>{if(finished.length<idx+1){grade()}idx++;if(idx>=deck.length){endTest()}else{$("submit").disabled=false;showQuestion()}};
+function endTest(){clearInterval(tick);quiz.classList.add("hidden");finish.classList.remove("hidden");$("finalScore").textContent=`${score} / ${deck.length}`;$("finalTime").textContent="所要時間："+$("timer").textContent;const missed=finished.filter(x=>!x.ok);$("review").innerHTML=missed.length?`<h2>復習リスト（${missed.length}語）</h2><div class="wordlist">${missed.map(x=>`<span>${escapeHtml(x.w.en)} — ${escapeHtml(x.w.ja)}</span>`).join("")}</div>`:"<p class='good'>全問正解！すばらしい！</p>";$("bar").style.width="100%"}
+$("again").onclick=()=>start();$("back").onclick=()=>{finish.classList.add("hidden");setup.classList.remove("hidden")};
+window.addEventListener("resize",()=>{if(!quiz.classList.contains("hidden"))resizeCanvas()});
+window.addEventListener("error",e=>{const status=$("ocrStatus");if(status)status.textContent="アプリ内エラー："+(e.message||"不明なエラー")});
+$("start").disabled=false;
+</script></body></html>
